@@ -1,0 +1,170 @@
+\documentclass[12pt, a4paper]{article}
+
+% --- Paquetes Esenciales ---
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{amsmath, amssymb} % Matemáticas y símbolos
+\usepackage{geometry} % Para configurar márgenes
+\usepackage{hyperref} % Para enlaces y PDF
+\usepackage{listings} % Para incluir y resaltar código C++
+\usepackage{tikz} % Para dibujar diagramas (arquitectura)
+\usetikzlibrary{positioning,arrows.meta}
+\usepackage{enumitem} % Para listas personalizadas
+
+% Configuración de Márgenes
+\geometry{
+ a4paper,
+ margin=2.5cm,
+}
+
+% Configuración de Listings para C++
+\lstset{
+    language=C++,
+    basicstyle=\ttfamily\small,
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    keywordstyle=\color{blue}\bfseries,
+    commentstyle=\color{gray}\em,
+    stringstyle=\color{red},
+    showstringspaces=false,
+    breaklines=true,
+    frame=single,
+    captionpos=b
+}
+
+% --- Metadatos del Documento ---
+\title{Simulación de Caché N-Vías Asociativa con Política FIFO}
+\author{Tulio Cordero y Carlos Zárate}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\thispagestyle{empty} % No numera la primera página
+
+% Tabla de Contenido
+\newpage
+\tableofcontents
+\newpage
+
+% -------------------------------------------------------------------
+\section{Introducción y Conceptos Fundamentales}
+% -------------------------------------------------------------------
+\label{sec:introduccion}
+
+Este documento presenta el diseño y la implementación de un simulador de memoria caché. El objetivo principal es modelar una caché con organización \textbf{N-Vías Asociativa} utilizando la política de reemplazo \textbf{First-In, First-Out (FIFO)}.
+
+\subsection{¿Qué es una Memoria Caché?}
+La caché es una memoria pequeña, rápida y costosa que actúa como intermediaria entre la CPU y la Memoria Principal (RAM). Su propósito es reducir la latencia de acceso a los datos, aprovechando los principios de \textbf{localidad temporal} y \textbf{localidad espacial}.
+
+\subsection{Caché N-Vías Asociativa}
+En este diseño, la caché está organizada en \textbf{conjuntos}. Cada conjunto contiene $N$ "vías" (en nuestro caso, $N=4$).
+\begin{itemize}[label=$\bullet$]
+    \item Un bloque de Memoria Principal puede ubicarse en cualquier de las $N$ vías de un conjunto específico.
+    \item Esta estructura balancea la velocidad de una caché de mapeo directo con la flexibilidad de una caché totalmente asociativa.
+\end{itemize}
+
+\subsection{Política de Reemplazo: FIFO}
+\label{sec:fifo}
+\textbf{FIFO} (First-In, First-Out) es el algoritmo de reemplazo seleccionado. Cuando un conjunto está lleno y ocurre un fallo de caché, la línea más antigua (la primera que se cargó) es desalojada para dar espacio al nuevo bloque.
+
+\begin{itemize}[label=$\rightarrow$]
+    \item \textbf{Ventaja Clave:} Su \textbf{simplicidad} y \textbf{bajo costo computacional} en la simulación ($\mathbf{O(1)}$ para reemplazo), permitiendo enfocarnos en la lógica del mapeo arquitectónico.
+    \item \textbf{Desventaja y Alternativas:} A diferencia de \textbf{LRU} (Least Recently Used), FIFO no considera la frecuencia de uso, lo cual lo hace menos eficiente en hardware real, pero ideal para un entorno educativo.
+\end{itemize}
+
+% -------------------------------------------------------------------
+\section{Arquitectura de la Simulación}
+% -------------------------------------------------------------------
+\label{sec:arquitectura}
+
+\subsection{Modelo de Dirección y Desglose de Bits}
+Utilizamos una dirección simulada de $\mathbf{16}$ \textbf{bits}. El desglose de la dirección en sus campos principales es crucial para el mapeo:
+\[ \text{Dirección} = \underbrace{\text{Tag}}_{\text{Etiqueta}} \; \Big| \; \underbrace{\text{Index}}_{\text{Índice del Conjunto}} \; \Big| \; \underbrace{\text{Offset}}_{\text{Desplazamiento dentro del Bloque}} \]
+
+\begin{itemize}[label=$\circ$]
+    \item La función \texttt{calcularDireccion} realiza el cálculo:
+    \begin{itemize}
+        \item \textbf{Offset}: Se obtiene mediante la operación de módulo ($\%$) con el tamaño del bloque.
+        \item \textbf{Index}: Se obtiene mediante \texttt{shift right} ($\gg$) de la dirección seguido de la operación módulo ($\%$) con el número de conjuntos.
+        \item \textbf{Tag}: El valor restante, utilizado para la comparación.
+    \end{itemize}
+\end{itemize}
+
+\subsection{Estructuras de Datos en C++}
+\label{sec:estructuras}
+La caché se modela utilizando estructuras de datos de la librería estándar de C++:
+\begin{enumerate}
+    \item \texttt{struct LineaCache}: Representa un bloque, conteniendo el \texttt{tag}, el \texttt{dato} y el bit \texttt{valida}.
+    \item \texttt{using ConjuntoCache = std::list<LineaCache>;}: La \texttt{std::list} es ideal para el conjunto, ya que permite implementar \textbf{FIFO} con alta eficiencia. El elemento más antiguo (FIFO) está siempre al \texttt{front()}, y el más nuevo se inserta al \texttt{push\_back()}.
+    \item \texttt{using Cache = std::unordered\_map<int, ConjuntoCache>;}: El \texttt{unordered\_map} (tabla hash) utiliza el \textbf{Index} como clave para un acceso rápido ($\mathbf{O(1)}$) al conjunto.
+\end{enumerate}
+
+\subsection{Diagrama de la Estructura de Datos}
+El siguiente diagrama simplifica la arquitectura de la simulación.
+\begin{figure}[h]
+    \centering
+    \begin{tikzpicture}[node distance=2cm, auto]
+        \node (CPU) [rectangle, draw, fill=blue!20, minimum width=3cm] {CPU (Dirección)};
+        \node (MAP) [rectangle, draw, below of=CPU, minimum width=3cm] {\texttt{calcularDireccion} (Index/Tag)};
+        \node (UMAP) [rectangle, draw, fill=red!20, right of=MAP, node distance=5cm] {\texttt{unordered\_map} (Index $\rightarrow$ Conjunto)};
+        \node (SET) [rectangle, draw, fill=green!20, below of=UMAP, node distance=2.5cm] {\texttt{std::list<LineaCache>} (4 Vías)};
+        \node (LINE) [rectangle, draw, below of=SET, node distance=2cm] {Línea: Tag | Dato | Válido};
+
+        \draw[->] (CPU) -- (MAP);
+        \draw[->] (MAP) -| (UMAP) node[pos=0.75, above] {Index};
+        \draw[->] (UMAP) -- (SET);
+        \draw[->] (SET) -- (LINE) node[midway, left] {Búsqueda Tag (Acierto/Fallo)};
+        \draw[->, dashed] (SET) to[bend right] node[below] {FIFO: pop\_front / push\_back} (SET);
+    \end{tikzpicture}
+    \caption{Flujo de acceso y estructuras de datos principales.}
+\end{figure}
+
+% -------------------------------------------------------------------
+\section{Funcionalidad Avanzada: Prefetching}
+% -------------------------------------------------------------------
+\label{sec:prefetch}
+
+La simulación incorpora una técnica de optimización de rendimiento: la carga anticipada o \textbf{Prefetching}.
+
+\subsection{Mecanismo de Prefetching}
+Después de cada \textbf{fallo de caché} (\textit{Miss}), el simulador llama a la función \texttt{cargarPrefetch}.
+\begin{itemize}[label=$\checkmark$]
+    \item Se predice la \textbf{localidad espacial}, asumiendo que se necesitará el bloque adyacente: $\text{Dirección Anticipada} = \text{Dirección Actual} + \text{Tamaño del Bloque}$.
+    \item El bloque anticipado solo se carga si \textbf{no está ya en la caché} y si \textbf{hay espacio libre} en su conjunto (evitando un reemplazo innecesario).
+\end{itemize}
+
+\subsection{Impacto en el Rendimiento}
+La inclusión del Prefetching en las simulaciones de acceso secuencial (como el recorrido de arrays o matrices) demuestra cómo la anticipación puede reducir significativamente la \textbf{Tasa de Fallos} al convertir un futuro fallo en un acierto.
+
+% -------------------------------------------------------------------
+\section{Análisis de Rendimiento}
+% -------------------------------------------------------------------
+\label{sec:analisis}
+
+La métrica principal de la simulación es la \textbf{Tasa de Aciertos} (Hit Rate), calculada en la función \texttt{mostrarEstadisticas}.
+
+\[ \text{Tasa de Aciertos} = \frac{\text{Aciertos}}{\text{Accesos Totales}} \times 100\% \]
+
+\subsection{Simulaciones Prácticas}
+El menú de operaciones permite probar dos escenarios de carga que explotan la localidad:
+\begin{enumerate}
+    \item \texttt{simularMatrizMips()}: Simula el acceso anidado (filas y columnas) a una matriz, probando la interacción entre la localidad espacial (acceso a elementos contiguos) y la temporal (reutilización de instrucciones).
+    \item \texttt{simularCargaMipsReducida()}: Acceso secuencial a un array, ideal para evaluar la efectividad de la política FIFO y del Prefetching.
+\end{enumerate}
+
+% -------------------------------------------------------------------
+\section{Código Fuente del Simulador (Extracto)}
+% -------------------------------------------------------------------
+\label{sec:codigo}
+
+Un extracto clave que ilustra la política FIFO dentro de la función \texttt{accederCache}.
+
+\lstinputlisting[
+    firstline=111,
+    lastline=130,
+    caption={Implementación de la política FIFO y carga del nuevo bloque.},
+    label=lst:fifo
+]{codigo.cpp}
+
+\end{document}
